@@ -22,3 +22,4 @@ pub mod transcript;
 mod kzh3_verifier_circuit;
 mod kzh3_augmented_circuit;
 pub mod speedyspartan;
+pub mod foldingverifier;
