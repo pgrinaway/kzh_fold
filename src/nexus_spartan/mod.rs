@@ -3,34 +3,32 @@ extern crate digest;
 extern crate rand;
 extern crate sha3;
 
+pub mod commitment_traits;
 mod commitments;
 pub mod committed_relaxed_snark;
+mod conversion;
 pub mod crr1cs;
 pub mod crr1csproof;
 pub mod errors;
-pub mod commitment_traits;
+pub mod matrix_evaluation_accumulation;
+pub mod partial_verifier;
 mod product_tree;
 pub mod r1csinstance;
+mod sparse_mlpoly;
 pub mod sparse_polynomial;
 pub mod sumcheck;
-mod timer;
-mod unipoly;
-mod conversion;
 pub mod sumcheck_circuit;
-pub mod partial_verifier;
-mod sparse_mlpoly;
-pub mod matrix_evaluation_accumulation;
+mod timer;
+pub mod unipoly;
 
+use crate::kzh::KZH;
 use ark_crypto_primitives::sponge::Absorb;
 use ark_ec::pairing::Pairing;
 use ark_ff::{BigInteger, PrimeField};
 use ark_serialize::*;
 use core::cmp::max;
 use errors::R1CSError;
-use r1csinstance::{
-    R1CSCommitment, R1CSDecommitment, R1CSInstance,
-};
-use crate::kzh::KZH;
+use r1csinstance::{R1CSCommitment, R1CSDecommitment, R1CSInstance};
 
 /// `ComputationCommitment` holds a public preprocessed NP statement (e.g., R1CS)
 #[derive(CanonicalSerialize, CanonicalDeserialize)]
@@ -232,11 +230,9 @@ impl<F: PrimeField + Absorb> Instance<F> {
             }
         };
 
-        Ok(
-            self
-                .inst
-                .is_sat(&padded_vars.assignment, &inputs.assignment),
-        )
+        Ok(self
+            .inst
+            .is_sat(&padded_vars.assignment, &inputs.assignment))
     }
 
     /// Constructs a new synthetic R1CS `Instance` and an associated satisfying assignment
@@ -245,7 +241,8 @@ impl<F: PrimeField + Absorb> Instance<F> {
         num_vars: usize,
         num_inputs: usize,
     ) -> (Instance<F>, VarsAssignment<F>, InputsAssignment<F>) {
-        let (inst, vars, inputs) = R1CSInstance::produce_synthetic_r1cs(num_cons, num_vars, num_inputs);
+        let (inst, vars, inputs) =
+            R1CSInstance::produce_synthetic_r1cs(num_cons, num_vars, num_inputs);
         (
             Instance { inst },
             VarsAssignment { assignment: vars },
@@ -280,7 +277,8 @@ pub fn analyze_vector_sparseness<F: PrimeField>(name: &str, z: &Vec<F>) {
     let max_bit_length_possible = total as u32 * modulus_bit_length;
 
     // Compute the effective bit length percentage
-    let effective_bit_length_percentage = (sum_bits as f64 / max_bit_length_possible as f64) * 100.0;
+    let effective_bit_length_percentage =
+        (sum_bits as f64 / max_bit_length_possible as f64) * 100.0;
 
     // Output the results
     println!("[*] Analyzing {}", name);
@@ -293,7 +291,10 @@ pub fn analyze_vector_sparseness<F: PrimeField>(name: &str, z: &Vec<F>) {
     println!("\tmin bit length: {}", min_bits);
     println!("\tmax bit length: {}", max_bits);
     println!("\teffective bit length (total bits): {}", sum_bits);
-    println!("\tmax possible bit length (total bits): {}", max_bit_length_possible);
+    println!(
+        "\tmax possible bit length (total bits): {}",
+        max_bit_length_possible
+    );
     println!(
         "\teffective bit length percentage: {:.2}%",
         effective_bit_length_percentage

@@ -1,9 +1,11 @@
+use ark_crypto_primitives::sponge::Absorb;
 use ark_ec::CurveGroup;
 use ark_ff::PrimeField;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 
 use crate::commitment::Commitment;
 use crate::polynomial::multilinear_poly::multilinear_poly::MultilinearPolynomial;
+use crate::transcript::transcript::Transcript;
 use core::marker::PhantomData;
 
 #[derive(Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize)]
@@ -40,8 +42,15 @@ pub struct PlonkishCommitments<G: CurveGroup, C: Commitment<G>> {
     pub(crate) _marker: PhantomData<G>,
 }
 
+impl<G: CurveGroup, C: Commitment<G>> PlonkishCommitments<G, C> {
+    pub fn absorb_in_transcript(&self, transcript: &mut Transcript<G::ScalarField>) {
+        transcript.absorb();
+        todo!()
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, CanonicalSerialize, CanonicalDeserialize)]
-pub struct PlonkishInstance<F: PrimeField, G: CurveGroup, C: Commitment<G>> {
-    pub instance: Vec<F>,
+pub struct PlonkishInstance<G: CurveGroup, C: Commitment<G>> {
+    pub instance: Vec<G::ScalarField>,
     pub commitments: PlonkishCommitments<G, C>,
 }
