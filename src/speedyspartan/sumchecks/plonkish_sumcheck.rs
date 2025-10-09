@@ -9,6 +9,7 @@ use crate::transcript::transcript::{AppendToTranscript, Transcript};
 use ark_crypto_primitives::sponge::Absorb;
 use ark_ff::PrimeField;
 
+#[derive(Debug, Clone)]
 pub struct PlonkishSumcheckResult<F: PrimeField + Absorb> {
     pub(crate) polys: Vec<UniPoly<F>>,
     pub(crate) claims_per_round: Vec<F>,

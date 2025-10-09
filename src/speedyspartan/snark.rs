@@ -6,15 +6,30 @@ use ark_serialize::{CanonicalDeserialize, CanonicalSerialize};
 use crate::commitment::Commitment;
 use crate::polynomial::eq_poly::eq_poly;
 use crate::polynomial::multilinear_poly::multilinear_poly::MultilinearPolynomial;
+use crate::speedyspartan::folding::FoldedObject;
 use crate::speedyspartan::plonkish::{
     PlonkishCommitments, PlonkishInstance, PlonkishShape, PlonkishWitness,
 };
-use crate::speedyspartan::sumchecks::addr_sumcheck::prove_addr_sumcheck;
-use crate::speedyspartan::sumchecks::plonkish_sumcheck::prove_plonkish_sumcheck;
+use crate::speedyspartan::sumchecks::addr_sumcheck::{prove_addr_sumcheck, AddrMSumcheckResult};
+use crate::speedyspartan::sumchecks::plonkish_sumcheck::{
+    prove_plonkish_sumcheck, PlonkishSumcheckResult,
+};
 use crate::speedyspartan::sumchecks::utils::scalar_rlc;
 use crate::speedyspartan::{folding, ADDR_DIM};
 use crate::transcript::transcript::Transcript;
 use core::marker::PhantomData;
+
+#[derive(Debug, Clone)]
+pub struct SpeedySpartanFragment<
+    G: CurveGroup<ScalarField = F>,
+    F: PrimeField + Absorb,
+    C: Commitment<G>,
+> {
+    plonkish_sumcheck: PlonkishSumcheckResult<F>,
+    addr_sumcheck: AddrMSumcheckResult<F>,
+    plonkish_fold: FoldedObject<G, F, C>,
+    addr_fold: FoldedObject<G, F, C>,
+}
 
 pub fn prove_speedyspartan_fragment<G, C, F>(
     incoming_shape: &PlonkishShape<G::ScalarField>,
@@ -80,6 +95,15 @@ pub fn prove_speedyspartan_fragment<G, C, F>(
         &mut incoming_shape_cloned.addr_C,
         &mut z,
         transcript,
+    );
+
+    let gamma = transcript.challenge_scalar(b"addr fold challenge");
+
+    let folded_addr = folding::addr::fold_addr(
+        &addr_sumcheck_result,
+        &incoming_shape,
+        &incoming_commitments,
+        &gamma,
     );
 
     todo!()

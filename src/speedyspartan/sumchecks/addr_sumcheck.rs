@@ -10,6 +10,7 @@ use crate::{
     transcript::transcript::{AppendToTranscript, Transcript},
 };
 
+#[derive(Debug, Clone)]
 pub struct AddrMSumcheckResult<F: PrimeField + Absorb> {
     pub(crate) polys: Vec<UniPoly<F>>,
     pub(crate) claims_per_round: Vec<F>,
