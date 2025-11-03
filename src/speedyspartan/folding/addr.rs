@@ -18,7 +18,7 @@ use ark_ff::PrimeField;
 pub fn fold_addr<G: CurveGroup<ScalarField = F>, F: PrimeField + Absorb, C: Commitment<G>>(
     addr_sumcheck_result: &AddrMSumcheckResult<F>,
     incoming_shape: &PlonkishShape<F>,
-    incoming_commitments: &PlonkishCommitments<G, C>,
+    incoming_commitments: &PlonkishCommitments<F, G, C>,
     gamma: &F,
 ) -> FoldedObject<G, F, C> {
     let mut addr_claims: Vec<F> = [

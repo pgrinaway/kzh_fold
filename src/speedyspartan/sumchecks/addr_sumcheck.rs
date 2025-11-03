@@ -19,6 +19,13 @@ pub struct AddrMSumcheckResult<F: PrimeField + Absorb> {
     pub(crate) addr_b_evals: Vec<F>,
     pub(crate) addr_c_evals: Vec<F>,
     pub(crate) z_eval: F,
+    pub(crate) eq_eval: F,
+}
+
+impl<F: PrimeField + Absorb> AddrMSumcheckResult<F> {
+    pub fn final_claim(&self) -> F {
+        todo!()
+    }
 }
 
 pub fn prove_addr_sumcheck<F: PrimeField + Absorb>(
@@ -107,5 +114,6 @@ pub fn prove_addr_sumcheck<F: PrimeField + Absorb>(
         addr_b_evals: addr_b.iter().map(|p| p[0]).collect(),
         addr_c_evals: addr_c.iter().map(|p| p[0]).collect(),
         z_eval: padded_z[0],
+        eq_eval: eq_poly[0],
     }
 }

@@ -18,7 +18,7 @@ pub fn fold<G: CurveGroup<ScalarField = F>, C: Commitment<G>, F: PrimeField + Ab
     sumcheck_result: &PlonkishSumcheckResult<F>,
     transcript: &mut Transcript<F>,
     incoming_shape: &PlonkishShape<F>,
-    incoming_commitments: &PlonkishCommitments<G, C>,
+    incoming_commitments: &PlonkishCommitments<F, G, C>,
 ) -> FoldedObject<G, F, C> {
     let gamma = transcript.challenge_scalar(b"plonkish rlc gamma");
     let claims = [

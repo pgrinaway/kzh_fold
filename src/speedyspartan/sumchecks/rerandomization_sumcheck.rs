@@ -8,12 +8,12 @@ use ark_ff::PrimeField;
 use rayon::iter::{IntoParallelRefMutIterator, ParallelIterator};
 
 pub struct RerandomizationEvaluationResult<F: PrimeField + Absorb> {
-    polys: Vec<UniPoly<F>>,
-    claims_per_round: Vec<F>,
-    challenge_points: Vec<F>,
-    prev_poly_v: F,
-    plonk_poly_v: F,
-    addr_poly_v: F,
+    pub(crate) polys: Vec<UniPoly<F>>,
+    pub(crate) claims_per_round: Vec<F>,
+    pub(crate) challenge_points: Vec<F>,
+    pub(crate) prev_poly_v: F,
+    pub(crate) plonk_poly_v: F,
+    pub(crate) addr_poly_v: F,
 }
 
 pub fn prove_rerandomization_sumcheck<F: PrimeField + Absorb>(
@@ -90,6 +90,14 @@ pub struct RerandSumcheckEvaluationResult<F: PrimeField + Absorb> {
     /// final single-value evaluations of each input polynomial after all bindings
     /// (same order as inputs: first all eq_polys, then all polys)
     pub final_poly_values: Vec<F>,
+
+    pub sigma: F,
+}
+
+impl<F: PrimeField + Absorb> RerandSumcheckEvaluationResult<F> {
+    pub fn final_claim(&self) -> F {
+        todo!()
+    }
 }
 
 /// Proves that `claim == sum_i sigma^i * eq_i * poly_i` at the current binding point,
@@ -187,5 +195,6 @@ pub fn prove_random_combination_sumcheck<F: PrimeField + Absorb>(
         claims_per_round,
         challenge_points: r,
         final_poly_values: final_vals,
+        sigma: sigma.clone(),
     }
 }

@@ -39,3 +39,9 @@ pub fn combine_eq_polys<F: PrimeField + Absorb>(
         })
         .collect()
 }
+
+pub fn vec_to_mle<F: PrimeField>(input: &[F]) -> MultilinearPolynomial<F> {
+    let mut poly_evals: Vec<F> = vec![F::ZERO; input.len().next_power_of_two()];
+    poly_evals[..input.len()].copy_from_slice(input);
+    MultilinearPolynomial::new(poly_evals)
+}

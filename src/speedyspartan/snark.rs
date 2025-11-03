@@ -15,6 +15,7 @@ use crate::speedyspartan::sumchecks::plonkish_sumcheck::{
     prove_plonkish_sumcheck, PlonkishSumcheckResult,
 };
 use crate::speedyspartan::sumchecks::utils::scalar_rlc;
+use crate::speedyspartan::utils::vec_to_mle;
 use crate::speedyspartan::{folding, ADDR_DIM};
 use crate::transcript::transcript::Transcript;
 use core::marker::PhantomData;
@@ -25,18 +26,19 @@ pub struct SpeedySpartanFragment<
     F: PrimeField + Absorb,
     C: Commitment<G>,
 > {
-    plonkish_sumcheck: PlonkishSumcheckResult<F>,
-    addr_sumcheck: AddrMSumcheckResult<F>,
-    plonkish_fold: FoldedObject<G, F, C>,
-    addr_fold: FoldedObject<G, F, C>,
+    pub(crate) plonkish_sumcheck: PlonkishSumcheckResult<F>,
+    pub(crate) addr_sumcheck: AddrMSumcheckResult<F>,
+    pub(crate) plonkish_fold: FoldedObject<G, F, C>,
+    pub(crate) addr_fold: FoldedObject<G, F, C>,
 }
 
 pub fn prove_speedyspartan_fragment<G, C, F>(
     incoming_shape: &PlonkishShape<G::ScalarField>,
     incoming_witness: &PlonkishWitness<G::ScalarField>,
-    incoming_instance: &PlonkishInstance<G, C>,
-    incoming_commitments: &PlonkishCommitments<G, C>,
-) where
+    incoming_instance: &PlonkishInstance<F, G, C>,
+    incoming_commitments: &PlonkishCommitments<F, G, C>,
+) -> SpeedySpartanFragment<G, F, C>
+where
     G: CurveGroup<ScalarField = F>,
     C: Commitment<G>,
     F: Absorb + PrimeField,
@@ -50,9 +52,16 @@ pub fn prove_speedyspartan_fragment<G, C, F>(
         .map(|_idx| transcript.challenge_scalar(b"plonkish_challenge"))
         .collect();
 
-    let mut eq_poly = eq_poly::EqPolynomial::new(random_challenge);
+    let eq_poly = eq_poly::EqPolynomial::new(random_challenge);
+    let mut eq_poly_mle = MultilinearPolynomial::new(eq_poly.evals());
 
     let mut incoming_shape_cloned = incoming_shape.clone();
+
+    let plonkish_zs = incoming_shape.z(&incoming_witness, &incoming_instance);
+    let mut z_a = vec_to_mle(&plonkish_zs.z_a);
+    let mut z_b = vec_to_mle(&plonkish_zs.z_b);
+    let mut z_c = vec_to_mle(&plonkish_zs.z_c);
+    let mut z_mle = vec_to_mle(&plonkish_zs.z);
 
     let plonkish_sumcheck_result = prove_plonkish_sumcheck(
         &F::ZERO,
@@ -61,10 +70,10 @@ pub fn prove_speedyspartan_fragment<G, C, F>(
         &mut incoming_shape_cloned.q_o,
         &mut incoming_shape_cloned.q_m,
         &mut incoming_shape_cloned.q_c,
-        z_a,
-        z_b,
-        z_c,
-        &mut eq_poly,
+        &mut z_a,
+        &mut z_b,
+        &mut z_c,
+        &mut eq_poly_mle,
         &mut transcript,
     );
 
@@ -85,16 +94,18 @@ pub fn prove_speedyspartan_fragment<G, C, F>(
         &rho,
     );
 
+    let mut eq_poly_mle_addr = MultilinearPolynomial::new(eq_poly.evals());
+
     let addr_sumcheck_result = prove_addr_sumcheck(
         ADDR_DIM,
         &addr_claim,
         &rho,
-        eq_poly,
+        &mut eq_poly_mle_addr,
         &mut incoming_shape_cloned.addr_A,
         &mut incoming_shape_cloned.addr_B,
         &mut incoming_shape_cloned.addr_C,
-        &mut z,
-        transcript,
+        &mut z_mle,
+        &mut transcript,
     );
 
     let gamma = transcript.challenge_scalar(b"addr fold challenge");
@@ -106,5 +117,10 @@ pub fn prove_speedyspartan_fragment<G, C, F>(
         &gamma,
     );
 
-    todo!()
+    SpeedySpartanFragment {
+        plonkish_sumcheck: plonkish_sumcheck_result,
+        addr_sumcheck: addr_sumcheck_result,
+        plonkish_fold: folded_plonkish,
+        addr_fold: folded_addr,
+    }
 }

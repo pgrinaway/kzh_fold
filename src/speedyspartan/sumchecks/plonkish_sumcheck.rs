@@ -42,6 +42,10 @@ impl<F: PrimeField + Absorb> PlonkishSumcheckResult<F> {
         ];
         let folded_poly = polynomial_rlc(&polynomials, &gamma);
     }
+
+    pub fn final_claim(&self) -> F {
+        todo!()
+    }
 }
 
 pub fn prove_plonkish_sumcheck<F: PrimeField + Absorb>(
