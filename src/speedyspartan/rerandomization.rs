@@ -27,6 +27,7 @@ pub struct RerandomizationOutput<
 > {
     pub(crate) sumcheck: RerandSumcheckEvaluationResult<F>,
     pub(crate) folded_object: FoldedObject<G, F, C>,
+    pub(crate) sigma_fold: F,
 }
 
 pub fn rerandomize_fold<
@@ -96,5 +97,6 @@ pub fn rerandomize_fold<
     RerandomizationOutput {
         sumcheck: rerand_result,
         folded_object,
+        sigma_fold: sigma,
     }
 }

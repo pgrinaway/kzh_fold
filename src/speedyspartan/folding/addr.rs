@@ -30,7 +30,7 @@ pub fn fold_addr<G: CurveGroup<ScalarField = F>, F: PrimeField + Absorb, C: Comm
     .flatten()
     .cloned()
     .collect();
-    addr_claims.push(addr_sumcheck_result.z_eval);
+    addr_claims.push(addr_sumcheck_result.w_eval);
     let folded_claim = scalar_rlc(&addr_claims, gamma);
 
     let polys_to_compress: Vec<MultilinearPolynomial<F>> = [

@@ -20,6 +20,7 @@ pub struct AddrMSumcheckResult<F: PrimeField + Absorb> {
     pub(crate) addr_c_evals: Vec<F>,
     pub(crate) z_eval: F,
     pub(crate) eq_eval: F,
+    pub(crate) w_eval: F,
 }
 
 impl<F: PrimeField + Absorb> AddrMSumcheckResult<F> {
@@ -37,6 +38,7 @@ pub fn prove_addr_sumcheck<F: PrimeField + Absorb>(
     addr_b: &mut [MultilinearPolynomial<F>],
     addr_c: &mut [MultilinearPolynomial<F>],
     padded_z: &mut MultilinearPolynomial<F>,
+    witness_mle: &MultilinearPolynomial<F>,
     transcript: &mut Transcript<F>,
 ) -> AddrMSumcheckResult<F> {
     let num_rounds = addr_a[0].len().log_2();
@@ -97,15 +99,8 @@ pub fn prove_addr_sumcheck<F: PrimeField + Absorb>(
         claims_per_round.push(claim_per_round);
     }
 
-    // NEW: also evaluate z at (1, r')
-    // Assumes the selector bit is the *first* variable bound by bind_poly_var_top.
-    let mut z_at_one = z_unbound.clone();
-    for (i, ri) in r.iter().enumerate() {
-        let val = if i == 0 { F::ONE } else { *ri };
-        z_at_one.bound_poly_var_top(&val);
-    }
-    let z_eval_at_one = z_at_one[0]; // this is z(1, r')
-                                     // Existing evals at (alpha, r')
+    let w_eval = witness_mle.evaluate(&r[1..]);
+
     AddrMSumcheckResult {
         polys,
         claims_per_round,
@@ -115,5 +110,6 @@ pub fn prove_addr_sumcheck<F: PrimeField + Absorb>(
         addr_c_evals: addr_c.iter().map(|p| p[0]).collect(),
         z_eval: padded_z[0],
         eq_eval: eq_poly[0],
+        w_eval,
     }
 }

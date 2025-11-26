@@ -10,6 +10,7 @@ use crate::speedyspartan::folding::FoldedObject;
 use crate::speedyspartan::plonkish::{
     PlonkishCommitments, PlonkishInstance, PlonkishShape, PlonkishWitness,
 };
+use crate::speedyspartan::rerandomization::{rerandomize_fold, RerandomizationOutput};
 use crate::speedyspartan::sumchecks::addr_sumcheck::{prove_addr_sumcheck, AddrMSumcheckResult};
 use crate::speedyspartan::sumchecks::plonkish_sumcheck::{
     prove_plonkish_sumcheck, PlonkishSumcheckResult,
@@ -30,6 +31,7 @@ pub struct SpeedySpartanFragment<
     pub(crate) addr_sumcheck: AddrMSumcheckResult<F>,
     pub(crate) plonkish_fold: FoldedObject<G, F, C>,
     pub(crate) addr_fold: FoldedObject<G, F, C>,
+    pub(crate) rerand_fold: RerandomizationOutput<G, F, C>,
 }
 
 pub fn prove_speedyspartan_fragment<G, C, F>(
@@ -105,6 +107,7 @@ where
         &mut incoming_shape_cloned.addr_B,
         &mut incoming_shape_cloned.addr_C,
         &mut z_mle,
+        &incoming_witness.witness_polynomial,
         &mut transcript,
     );
 
@@ -117,10 +120,16 @@ where
         &gamma,
     );
 
+    let rerand_fold = rerandomize_fold(
+        &[folded_plonkish.clone(), folded_addr.clone()],
+        &mut transcript,
+    );
+
     SpeedySpartanFragment {
         plonkish_sumcheck: plonkish_sumcheck_result,
         addr_sumcheck: addr_sumcheck_result,
         plonkish_fold: folded_plonkish,
         addr_fold: folded_addr,
+        rerand_fold,
     }
 }

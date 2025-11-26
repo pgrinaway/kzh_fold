@@ -1,15 +1,25 @@
-use crate::constant_for_curves::ScalarField;
+use std::marker::PhantomData;
+
+use crate::commitment::Commitment;
+use crate::constant_for_curves::{BaseField, ScalarField};
 use crate::nexus_spartan::sumcheck_circuit::sumcheck_circuit::SumcheckCircuit;
 use crate::nexus_spartan::sumcheck_circuit::sumcheck_circuit_var::SumcheckCircuitVar;
 use crate::nexus_spartan::unipoly::unipoly_var::{CompressedUniPolyVar, UniPolyVar};
 use crate::polynomial::eq_poly::eq_poly::EqPolynomial;
 use crate::polynomial::eq_poly::eq_poly_var::EqPolynomialVar;
+use crate::speedyspartan::circuit::rerand_verifier::RerandSumcheck;
+use crate::speedyspartan::circuit::rlc::{SSCCommitmentVar, ScalarRLCVar};
+use crate::speedyspartan::circuit::utils::concat_mle_claim;
+use crate::speedyspartan::circuit::{INSTANCE_SIZE, SELF_HASH};
+use crate::speedyspartan::plonkish::{PlonkishCommitments, PlonkishInstance};
+use crate::speedyspartan::snark::SpeedySpartanFragment;
 use crate::speedyspartan::sumchecks::addr_sumcheck::AddrMSumcheckResult;
 use crate::speedyspartan::sumchecks::plonkish_sumcheck::{self, PlonkishSumcheckResult};
 use crate::speedyspartan::{ADDR_DEGREE, ADDR_N_ROUNDS, PLONKISH_DEGREE, PLONKISH_N_ROUNDS};
 use crate::transcript::transcript_var::{AppendToTranscriptVar, TranscriptVar};
 use ark_crypto_primitives::sponge::Absorb;
 use ark_ec::short_weierstrass::SWCurveConfig;
+use ark_ec::CurveGroup;
 use ark_ff::PrimeField;
 use ark_r1cs_std::alloc::{AllocVar, AllocationMode};
 use ark_r1cs_std::eq::EqGadget;
@@ -114,6 +124,27 @@ impl<F: PrimeField + Absorb> PlonkishClaim<F> {
             challenge_point_var,
         }
     }
+
+    pub fn claim_as_vec(&self) -> Vec<FpVar<F>> {
+        vec![
+            self.v_a.clone(),
+            self.v_b.clone(),
+            self.v_zc.clone(),
+            self.v_o.clone(),
+            self.v_m.clone(),
+            self.v_l.clone(),
+            self.v_r.clone(),
+            self.v_c.clone(),
+        ]
+    }
+
+    pub fn compute_final_claim_noeq(&self) -> FpVar<F> {
+        self.v_l.clone() * self.v_a.clone()
+            + self.v_r.clone() * self.v_b.clone()
+            + self.v_zc.clone() * self.v_o.clone()
+            + self.v_m.clone() * self.v_a.clone() * self.v_b.clone()
+            + self.v_c.clone()
+    }
 }
 
 pub struct PlonkishSumcheckVar<F>
@@ -183,6 +214,7 @@ pub struct AddrClaim<F: PrimeField + Absorb> {
     addr_b_prod: FpVar<F>,
     addr_c_prod: FpVar<F>,
     z_eval: FpVar<F>,
+    w_eval: FpVar<F>,
     final_claim: FpVar<F>,
 }
 
@@ -226,6 +258,13 @@ impl<F: PrimeField + Absorb> AddrClaim<F> {
         )
         .unwrap();
 
+        let w_eval = FpVar::new_variable(
+            ns.clone(),
+            || Ok(addr_sumcheck.w_eval),
+            AllocationMode::Witness,
+        )
+        .unwrap();
+
         let eq_var = EqPolynomialVar::new_variable(
             ns.clone(),
             || Ok(eq_polynomial),
@@ -245,7 +284,7 @@ impl<F: PrimeField + Absorb> AddrClaim<F> {
         let final_claim_g = (addr_a_evals_prod.clone()
             + addr_b_evals_prod.clone() * challenge_rho
             + addr_c_evals_prod.clone() * challenge_rho.square().unwrap())
-            * z_eval.clone();
+            * w_eval.clone();
         let final_claim = eq_eval * final_claim_g;
 
         Self {
@@ -254,6 +293,7 @@ impl<F: PrimeField + Absorb> AddrClaim<F> {
             addr_c_prod: addr_c_evals_prod,
             z_eval,
             final_claim,
+            w_eval,
         }
     }
 }
@@ -261,6 +301,8 @@ impl<F: PrimeField + Absorb> AddrClaim<F> {
 pub struct AddrSumcheckVar<F: PrimeField + Absorb> {
     sumcheck: SumcheckCircuitVar<F>,
     addr_claim: AddrClaim<F>,
+    final_claim: FpVar<F>,
+    challenge: Vec<FpVar<F>>,
 }
 
 impl<F: PrimeField + Absorb> AddrSumcheckVar<F> {
@@ -291,7 +333,7 @@ impl<F: PrimeField + Absorb> AddrSumcheckVar<F> {
         )
         .unwrap();
 
-        sumcheck.verify(transcript);
+        let (final_claim, challenge) = sumcheck.verify(transcript);
 
         let addr_claim_var = AddrClaim::new(ns.clone(), addr_sumcheck, challenge_rho, eq_poly);
         sumcheck.claim.enforce_equal(&addr_claim_var.final_claim);
@@ -299,46 +341,137 @@ impl<F: PrimeField + Absorb> AddrSumcheckVar<F> {
         Self {
             sumcheck,
             addr_claim: addr_claim_var,
+            final_claim,
+            challenge,
         }
     }
 }
 
-pub struct SSFragmentVar<F: PrimeField + Absorb> {
+pub struct SSFragmentVar<
+    F: PrimeField + Absorb,
+    F2: PrimeField + Absorb,
+    G: CurveGroup<ScalarField = F, BaseField = F2>,
+> {
     plonkish_sumcheck: PlonkishSumcheckVar<F>,
     addr_sumcheck: AddrSumcheckVar<F>,
+    plonkish_rlc: ScalarRLCVar<F>,
+    circuit_comm: SSCCommitmentVar<F, F2>,
+    circuit_hash: FpVar<F>,
+    instance: Vec<FpVar<F>>,
+    _g: PhantomData<G>,
 }
 
-impl<F: PrimeField + Absorb> SSFragmentVar<F> {
-    pub fn new(
-        cs: impl Into<Namespace<F>>,
+impl<
+        F: PrimeField + Absorb,
+        F2: PrimeField + Absorb,
+        G: CurveGroup<ScalarField = F, BaseField = F2>,
+    > SSFragmentVar<F, F2, G>
+{
+    pub fn new<C: Commitment<G>>(
+        cs: &mut ConstraintSystemRef<F>,
+        ssfragment: SpeedySpartanFragment<G, F, C>,
         plonkish_result: &PlonkishSumcheckResult<F>,
         addr_result: &AddrMSumcheckResult<F>,
+        plonkish_commitments: &PlonkishCommitments<F, G, C>,
+        instance: &PlonkishInstance<F, G, C>,
         transcript: &mut TranscriptVar<F>,
     ) -> Self {
         let ns = cs.into();
+        // Get the instance into a variable:
+        let instance_var: Vec<FpVar<F>> = instance
+            .instance
+            .iter()
+            .take(INSTANCE_SIZE)
+            .map(|instance_felt| FpVar::new_input(cs, || Ok(instance_felt)).unwrap())
+            .collect();
+
+        // Allocate the commitments; not native here, just used for hashing:
+        //TODO: Commit witness!
+        let n_rounds_tau = plonkish_result.claims_per_round.len();
+        let comms_nn = SSCCommitmentVar::new(ns.clone(), plonkish_commitments);
+        let commitment_hash = comms_nn.hash(cs.into());
+
+        // bind the first variable of the instance to the self hash:
+        instance_var[SELF_HASH].enforce_equal(&commitment_hash);
+        let tau: Vec<FpVar<F>> = (0..n_rounds_tau)
+            .into_iter()
+            .map(|_idx| transcript.challenge_scalar(b"tau"))
+            .collect();
+        // Verify the plonkish sumcheck
         let plonkish_sumcheck_var =
             PlonkishSumcheckVar::new(ns.clone(), plonkish_result, transcript);
+
+        let plonkish_challenge = transcript.challenge_scalar(b"plonkish challenge");
+        let plonkish_rlc = ScalarRLCVar::new(
+            cs,
+            plonkish_sumcheck_var.plonkish_claim.claim_as_vec(),
+            plonkish_challenge,
+        );
+
+        // Enforce that the final claim of the plonkish sumcheck is comprised correctly of the multilinear evals
+        let eq_poly_plonkish = EqPolynomialVar::new(tau);
+        let plonkish_no_eq = plonkish_sumcheck_var
+            .plonkish_claim
+            .compute_final_claim_noeq();
+        let eq_eval =
+            eq_poly_plonkish.evaluate(&plonkish_sumcheck_var.plonkish_claim.challenge_point_var);
+        let plonkish_claim = eq_eval * plonkish_no_eq;
+        plonkish_claim.enforce_equal(&plonkish_sumcheck_var.plonkish_claim.final_claim);
+
+        // Move on to ADDR phase:
+        // Draw challenge for combining claims
         let challenge_rho_addr = transcript.challenge_scalar(b"addr challenge");
-        let eq_poly_plonkish = EqPolynomial::new(plonkish_result.challenge_points.clone());
+
+        // Need to make an eq poly from plonkish:
+        let eq_poly_plonkish_nonvar = EqPolynomial::new(plonkish_result.challenge_points.clone());
+
+        // Form the compressed addr claim
         let addr_claim = AddrClaim::new(
             ns.clone(),
             addr_result,
             &challenge_rho_addr,
-            eq_poly_plonkish.clone(),
+            eq_poly_plonkish_nonvar.clone(),
         );
 
+        // Verify the addr sumcheck
         let addr_sumcheck_var = AddrSumcheckVar::new(
             ns.clone(),
             addr_result,
             addr_claim,
-            eq_poly_plonkish,
+            eq_poly_plonkish_nonvar.clone(),
             &challenge_rho_addr,
             transcript,
         );
 
+        let z_claim_reconstructed = concat_mle_claim(
+            addr_sumcheck_var.challenge,
+            addr_claim.w_eval,
+            &instance_var,
+        )
+        .unwrap();
+        z_claim_reconstructed.enforce_equal(addr_claim.z_eval);
+
+        let sigma_rerand = transcript.challenge_scalar(b"sigma_fold");
+        let eq_plonkish =
+            EqPolynomialVar::new(plonkish_sumcheck_var.plonkish_claim.challenge_point_var);
+        let eq_addr = EqPolynomialVar::new(addr_sumcheck_var.challenge);
+        let eqs = vec![eq_plonkish, eq_addr];
+        // Now need to verify the rerandomization sumcheck
+        let rerand_verifier = RerandSumcheck::new(
+            cs.into(),
+            &ssfragment.rerand_fold.sumcheck.clone(),
+            eqs,
+            sigma_rerand,
+            transcript,
+        );
         Self {
             plonkish_sumcheck: plonkish_sumcheck_var,
             addr_sumcheck: addr_sumcheck_var,
+            plonkish_rlc,
+            circuit_comm: comms_nn,
+            _g: PhantomData,
+            circuit_hash: commitment_hash,
+            instance: instance_var,
         }
     }
 }

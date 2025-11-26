@@ -1,5 +1,6 @@
 use crate::nexus_spartan::sumcheck_circuit::sumcheck_circuit::SumcheckCircuit;
 use crate::nexus_spartan::unipoly::unipoly_var::{CompressedUniPolyVar, UniPolyVar};
+use crate::speedyspartan::circuit::gadgets::squeeze_challenge;
 use crate::transcript::transcript_var::{AppendToTranscriptVar, TranscriptVar};
 use ark_crypto_primitives::sponge::Absorb;
 use ark_ff::PrimeField;
@@ -9,7 +10,7 @@ use ark_r1cs_std::fields::fp::FpVar;
 use ark_r1cs_std::R1CSVar;
 use ark_relations::r1cs::{ConstraintSystemRef, Namespace, SynthesisError};
 use std::borrow::Borrow;
-
+const N_CHALLENGE_BITS: usize = 128;
 pub struct SumcheckCircuitVar<F: PrimeField + Absorb> {
     pub compressed_polys: Vec<CompressedUniPolyVar<F>>,
     pub claim: FpVar<F>,
@@ -82,11 +83,8 @@ impl<F: PrimeField + Absorb> AllocVar<SumcheckCircuit<F>, F> for SumcheckCircuit
             .map(|poly| CompressedUniPolyVar::new_variable(cs.clone(), || Ok(poly), mode).unwrap())
             .collect::<Vec<_>>();
 
-        let claim_var = FpVar::new_variable(
-            cs.clone(),
-            || Ok(sumcheck_circuit.claim),
-            mode,
-        ).unwrap();
+        let claim_var =
+            FpVar::new_variable(cs.clone(), || Ok(sumcheck_circuit.claim), mode).unwrap();
 
         // Directly set the `num_rounds` and `degree_bound` without allocation
         let num_rounds = sumcheck_circuit.num_rounds;
@@ -102,7 +100,6 @@ impl<F: PrimeField + Absorb> AllocVar<SumcheckCircuit<F>, F> for SumcheckCircuit
     }
 }
 
-
 impl<F: PrimeField + Absorb> SumcheckCircuitVar<F> {
     pub fn verify(&self, transcript: &mut TranscriptVar<F>) -> (FpVar<F>, Vec<FpVar<F>>) {
         let mut e = self.claim.clone();
@@ -117,13 +114,21 @@ impl<F: PrimeField + Absorb> SumcheckCircuitVar<F> {
             assert_eq!(poly.degree(), self.degree_bound);
 
             // check if G_k(0) + G_k(1) = e
-            (poly.eval_at_zero() + poly.eval_at_one()).enforce_equal(&e).expect("equality error");
+            (poly.eval_at_zero() + poly.eval_at_one())
+                .enforce_equal(&e)
+                .expect("equality error");
 
             // append the prover's message to the transcript
             UniPolyVar::append_to_transcript(&poly, b"poly", transcript);
 
             //derive the verifier's challenge for the next round
-            let r_i = TranscriptVar::challenge_scalar(transcript, b"challenge_nextround");
+            //let r_i = TranscriptVar::challenge_scalar(transcript, b"challenge_nextround");
+            let r_i = squeeze_challenge(
+                self.cs().clone(),
+                transcript,
+                N_CHALLENGE_BITS,
+                b"challenge_nextround",
+            );
 
             r.push(r_i.clone());
 

@@ -55,7 +55,6 @@ impl<F: PrimeField + Absorb> RerandSumcheck<F> {
         cs: impl Into<Namespace<F>>,
         rerand_result: &RerandSumcheckEvaluationResult<F>,
         eqs: Vec<EqPolynomialVar<F>>,
-        challenge_rho: &[FpVar<F>],
         sigma_challenge: FpVar<F>,
         transcript: &mut TranscriptVar<F>,
     ) -> Self {
@@ -79,7 +78,8 @@ impl<F: PrimeField + Absorb> RerandSumcheck<F> {
         )
         .unwrap();
 
-        sumcheck.verify(transcript);
+        let (claim, challenge_rho) = sumcheck.verify(transcript);
+        // let challenge_rho =
 
         // Compute the claim, an RLC of eq*claim:
         let sigma_powers: Vec<FpVar<F>> = (0..len_polys)
@@ -89,7 +89,7 @@ impl<F: PrimeField + Absorb> RerandSumcheck<F> {
         let final_claim: FpVar<F> = eqs
             .iter()
             .zip(rerand_result.final_poly_values.clone())
-            .map(|(eq, claim)| eq.evaluate(challenge_rho) * claim)
+            .map(|(eq, claim)| eq.evaluate(&challenge_rho) * claim)
             .reduce(|a, b| a + b)
             .unwrap();
 
